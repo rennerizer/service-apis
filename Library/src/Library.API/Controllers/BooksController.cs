@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Library.API.Services;
 using AutoMapper;
 using Library.API.Models;
+using Library.API.Entities;
 
 namespace Library.API.Controllers
 {
@@ -34,7 +35,7 @@ namespace Library.API.Controllers
             return Ok(books);
         }
 
-        [HttpGet("{id}")]
+        [HttpGet("{id}", Name ="GetBookForAuthor")]
         public IActionResult GetBookForAuthor(Guid authorId, Guid id)
         {
             if (!_repository.AuthorExists(authorId))
@@ -48,6 +49,46 @@ namespace Library.API.Controllers
             var book = Mapper.Map<BookDto>(bookEntity);
 
             return Ok(book);
+        }
+
+        [HttpPost()]
+        public IActionResult CreateBookForAuthor(Guid authorId, [FromBody] BookForCreationDto book)
+        {
+            if (book == null)
+                return BadRequest();
+
+            if (!_repository.AuthorExists(authorId))
+                return NotFound();
+
+            var bookEntity = Mapper.Map<Book>(book);
+
+            _repository.AddBookForAuthor(authorId, bookEntity);
+
+            if (!_repository.Save())
+                throw new Exception($"Creating a book for author {authorId} failed on save.");
+
+            var bookToReturn = Mapper.Map<BookDto>(bookEntity);
+
+            return CreatedAtRoute("GetBookForAuthor", new { authorId = authorId, id = bookToReturn.Id }, bookToReturn);
+        }
+
+        [HttpDelete("{id}")]
+        public IActionResult DeleteBookForAuthor(Guid authorId, Guid id)
+        {
+            if (!_repository.AuthorExists(authorId))
+                return NotFound();
+
+            var bookForAuthorFromRepo = _repository.GetBookForAuthor(authorId, id);
+
+            if (bookForAuthorFromRepo == null)
+                return NotFound();
+
+            _repository.DeleteBook(bookForAuthorFromRepo);
+
+            if (!_repository.Save())
+                throw new Exception($"Deleting book {id} for author {authorId} failed on save.");
+
+            return NoContent();
         }
     }
 }
