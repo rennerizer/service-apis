@@ -80,6 +80,10 @@ namespace Library.API
                 config.CreateMap<Models.AuthorForCreationDto, Entities.Author>();
 
                 config.CreateMap<Models.BookForCreationDto, Entities.Book>();
+
+                config.CreateMap<Models.BookForUpdateDto, Entities.Book>();
+
+                config.CreateMap<Entities.Book, Models.BookForUpdateDto>();
             });
 
             libraryContext.EnsureSeedDataForContext();
