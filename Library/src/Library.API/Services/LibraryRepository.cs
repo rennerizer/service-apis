@@ -1,4 +1,6 @@
 ﻿using Library.API.Entities;
+using Library.API.Helpers;
+using Library.API.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,10 +10,12 @@ namespace Library.API.Services
     public class LibraryRepository : ILibraryRepository
     {
         private LibraryContext _context;
+        private IPropertyMappingService _propertyMappingService;
 
-        public LibraryRepository(LibraryContext context)
+        public LibraryRepository(LibraryContext context, IPropertyMappingService propertyMappingService)
         {
             _context = context;
+            _propertyMappingService = propertyMappingService;
         }
 
         public void AddAuthor(Author author)
@@ -64,9 +68,35 @@ namespace Library.API.Services
             return _context.Authors.FirstOrDefault(a => a.Id == authorId);
         }
 
-        public IEnumerable<Author> GetAuthors()
+        public PagedList<Author> GetAuthors(AuthorsResourceParameters parameters)
         {
-            return _context.Authors.OrderBy(a => a.FirstName).ThenBy(a => a.LastName);
+            //var collection = _context.Authors
+            //    .OrderBy(a => a.FirstName)
+            //    .ThenBy(a => a.LastName)
+            //    .AsQueryable();
+
+            var collection = _context.Authors
+                .ApplySort(parameters.OrderBy, _propertyMappingService.GetPropertyMapping<AuthorDto, Author>());
+
+            if (!string.IsNullOrEmpty(parameters.Genre))
+            {
+                var genreClause = parameters.Genre.Trim().ToLowerInvariant();
+
+                collection = collection.Where(a => a.Genre.ToLowerInvariant() == genreClause);
+            }
+
+            if (!string.IsNullOrEmpty(parameters.SearchQuery))
+            {
+                var searchClause = parameters.SearchQuery.Trim().ToLowerInvariant();
+
+                collection = collection
+                    .Where(
+                            a => a.Genre.ToLowerInvariant().Contains(searchClause)
+                        || a.FirstName.ToLowerInvariant().Contains(searchClause)
+                        || a.LastName.ToLowerInvariant().Contains(searchClause));
+            }
+
+            return PagedList<Author>.Create(collection, parameters.PageNumber, parameters.PageSize);
         }
 
         public IEnumerable<Author> GetAuthors(IEnumerable<Guid> authorIds)
