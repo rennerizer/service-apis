@@ -35,7 +35,7 @@ namespace Library.API.Controllers
         }
 
         [HttpGet(Name = "GetAuthors")]
-        public IActionResult GetAuthors(AuthorsResourceParameters parameters)
+        public IActionResult GetAuthors(AuthorsResourceParameters parameters, [FromHeader(Name = "Accept")] string mediaType)
         {
             if (!_mappingService.ValidMappingExistsFor<AuthorDto, Author>(parameters.OrderBy))
                 return BadRequest();
@@ -51,42 +51,64 @@ namespace Library.API.Controllers
             //var nextPageLink = authorEntities.HasNext ?
             //    CreateAuthorsResourceUri(parameters, ResourceUriType.NextPage) : null;
 
-            var paginationMetadata = new
-            {
-                totalCount = authorEntities.TotalCount,
-                pageSize = authorEntities.PageSize,
-                currentPage = authorEntities.CurrentPage,
-                totalPages = authorEntities.TotalPages,
-                //previousPageLink = previousPageLink,
-                //nextPageLink = nextPageLink
-            };
-
-            Response.Headers.Add("X-Pagination",
-                Newtonsoft.Json.JsonConvert.SerializeObject(paginationMetadata));
-
             var authors = Mapper.Map<IEnumerable<AuthorDto>>(authorEntities);
 
-            var links = CreateLinksForAuthors(parameters, authorEntities.HasNext, authorEntities.HasPrevious);
-
-            var shapedAuthors = authors.ShapeData(parameters.Fields);
-
-            var shapedAuthorsWithLinks = shapedAuthors.Select(author =>
+            if (mediaType == "application/vnd.marvin.hateoas+json")
             {
-                var authorAsDictionary = author as IDictionary<string, object>;
-                var authorLinks = CreateLinksForAuthor((Guid)authorAsDictionary["Id"], parameters.Fields);
+                var paginationMetadata = new
+                {
+                    totalCount = authorEntities.TotalCount,
+                    pageSize = authorEntities.PageSize,
+                    currentPage = authorEntities.CurrentPage,
+                    totalPages = authorEntities.TotalPages
+                };
 
-                authorAsDictionary.Add("links", authorLinks);
+                Response.Headers.Add("X-Pagination", Newtonsoft.Json.JsonConvert.SerializeObject(paginationMetadata));
 
-                return authorAsDictionary;
-            });
+                var links = CreateLinksForAuthors(parameters, authorEntities.HasNext, authorEntities.HasPrevious);
 
-            var linkedCollectionResource = new
+                var shapedAuthors = authors.ShapeData(parameters.Fields);
+
+                var shapedAuthorsWithLinks = shapedAuthors.Select(author =>
+                {
+                    var authorAsDictionary = author as IDictionary<string, object>;
+                    var authorLinks = CreateLinksForAuthor((Guid)authorAsDictionary["Id"], parameters.Fields);
+
+                    authorAsDictionary.Add("links", authorLinks);
+
+                    return authorAsDictionary;
+                });
+
+                var linkedCollectionResource = new
+                {
+                    value = shapedAuthorsWithLinks,
+                    links = links
+                };
+
+                return Ok(linkedCollectionResource);
+            }
+            else
             {
-                value = shapedAuthorsWithLinks,
-                links = links
-            };
+                var previousPageLink = authorEntities.HasPrevious ?
+                    CreateAuthorsResourceUri(parameters, ResourceUriType.PreviousPage) : null;
 
-            return Ok(linkedCollectionResource);
+                var nextPageLink = authorEntities.HasNext ?
+                    CreateAuthorsResourceUri(parameters, ResourceUriType.NextPage) : null;
+
+                var paginationMetadata = new
+                {
+                    totalCount = authorEntities.TotalCount,
+                    pageSize = authorEntities.PageSize,
+                    currentPage = authorEntities.CurrentPage,
+                    totalPages = authorEntities.TotalPages,
+                    previousPageLink = previousPageLink,
+                    nextPageLink = nextPageLink
+                };
+
+                Response.Headers.Add("X-Pagination", Newtonsoft.Json.JsonConvert.SerializeObject(paginationMetadata));
+
+                return Ok(authors.ShapeData(parameters.Fields));
+            }
         }
 
         private string CreateAuthorsResourceUri(AuthorsResourceParameters parameters, ResourceUriType type)
@@ -152,8 +174,34 @@ namespace Library.API.Controllers
             return Ok(linkedResourceToReturn);
         }
 
-        [HttpPost]
+        [HttpPost(Name = "CreateAuthor")]
+        [RequestHeaderMatchesMediaType("Content-Type", new[] { "application/vnd.marvin.author.full+json" })]
         public IActionResult CreateAuthor([FromBody] AuthorForCreationDto author)
+        {
+            if (author == null)
+                return BadRequest();
+
+            var authorEntity = Mapper.Map<Author>(author);
+
+            _repository.AddAuthor(authorEntity);
+
+            if (!_repository.Save())
+                throw new Exception("Creating an author failed on save.");
+
+            var authorToReturn = Mapper.Map<AuthorDto>(authorEntity);
+
+            var links = CreateLinksForAuthor(authorToReturn.Id, null);
+
+            var linkedResourceToReturn = authorToReturn.ShapeData(null) as IDictionary<string, object>;
+
+            linkedResourceToReturn.Add("links", links);
+
+            return CreatedAtRoute("GetAuthor", new { id = linkedResourceToReturn["Id"] }, linkedResourceToReturn);
+        }
+
+        [HttpPost(Name = "CreateAuthorWithDateOfDeath")]
+        [RequestHeaderMatchesMediaType("Content-Type", new[] { "application/vnd.marvin.authorwithdateofdeath.full+json", "application/vnd.marvin.authorwithdateofdeath.full+xml" })]
+        public IActionResult CreateAuthorWithDateOfDeathDto([FromBody] AuthorForCreationWithDateOfDeathDto author)
         {
             if (author == null)
                 return BadRequest();

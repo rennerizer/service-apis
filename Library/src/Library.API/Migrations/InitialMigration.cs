@@ -13,6 +13,7 @@ namespace Library.API.Migrations
                 {
                     Id = table.Column<Guid>(nullable: false),
                     DateOfBirth = table.Column<DateTimeOffset>(nullable: false),
+                    DateOfDeath = table.Column<DateTimeOffset>(nullable: true),
                     FirstName = table.Column<string>(maxLength: 50, nullable: false),
                     Genre = table.Column<string>(maxLength: 50, nullable: false),
                     LastName = table.Column<string>(maxLength: 50, nullable: false)
